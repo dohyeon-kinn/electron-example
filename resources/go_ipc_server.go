@@ -14,7 +14,7 @@ type Event struct {
 	Type      string `json:"type"`      // "status"
 	Command   string `json:"command"`   // vpn_on, vpn_off, vpn_status
 	Status    bool   `json:"status"`    // true / false (boolean)
-	Timestamp string `json:"timestamp"` // YYYY/MM/DD HH:MM:SS
+	Timestamp int64  `json:"timestamp"` // timestamp in milliseconds
 }
 
 // VPN 상태를 관리하는 전역 변수 (시뮬레이션용)
@@ -36,12 +36,12 @@ func getVPN() bool {
 }
 
 // 공통으로 status Event 만드는 헬퍼
-func makeStatusEvent(command string) *Event {
+func makeVPNStatusEvent(command string) *Event {
 	return &Event{
-		Type:      "status",
+		Type:      "vpn_status",
 		Command:   command,
 		Status:    getVPN(), // boolean 값으로 저장
-		Timestamp: time.Now().Format("2006/01/02 15:04:05"),
+		Timestamp: time.Now().UnixMilli(),
 	}
 }
 
@@ -49,7 +49,7 @@ func makeStatusEvent(command string) *Event {
 // 3초마다 현재 VPN 상태를 보내줌
 func startStatusStream() {
 	for {
-		event := makeStatusEvent("vpn_status")
+		event := makeVPNStatusEvent("vpn_status")
 		sendEvent(event)
 
 		time.Sleep(3 * time.Second)
@@ -78,14 +78,14 @@ func handleCommand(command string) *Event {
 	switch command {
 	case "vpn_on":
 		setVPN(true)
-		return makeStatusEvent("vpn_on")
+		return makeVPNStatusEvent("vpn_on")
 
 	case "vpn_off":
 		setVPN(false)
-		return makeStatusEvent("vpn_off")
+		return makeVPNStatusEvent("vpn_off")
 
 	case "vpn_status":
-		return makeStatusEvent("vpn_status")
+		return makeVPNStatusEvent("vpn_status")
 
 	default:
 		// default는 아무 이벤트도 보내지 않음
@@ -113,7 +113,3 @@ func main() {
 	// 2. 명령 리스너 시작
 	startCommandListener()
 }
-
-
-
-// 빌드 명령어 (macOS/Linux): go build -o go_ipc_server go_ipc_server.go

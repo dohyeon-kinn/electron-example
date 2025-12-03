@@ -14,7 +14,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     icon: path.resolve(__dirname, 'assets', 'icon'),
-    extraResource: ['resources'],
+    extraResource: ['resources', 'assets'],
     appCategoryType: 'public.app-category.utilities',
   },
   makers: [

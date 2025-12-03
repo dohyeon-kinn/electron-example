@@ -11,11 +11,11 @@ if (started) {
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let goProcess: ChildProcess | null = null;
+let isVpnOn: boolean = false;
 
 const getGoBinaryPath = () => {
   const ext = platform() === 'win32' ? '.exe' : '';
   const binaryName = `go_ipc_server_${platform()}_${arch()}${ext}`;
-
   if (app.isPackaged) {
     return path.join(process.resourcesPath, 'resources', binaryName);
   }
@@ -36,8 +36,8 @@ const createWindow = () => {
     width: 340,
     height: 600,
     resizable: false,
+    maximizable: false,
     fullscreenable: false,
-    roundedCorners: true,
     titleBarStyle: 'hidden',
     webPreferences: {
       devTools: !app.isPackaged,
@@ -53,18 +53,31 @@ const createWindow = () => {
 };
 
 const createTray = () => {
-  const icon = nativeImage.createFromPath(getIconPath('tray.png'));
-  if (process.platform === 'darwin') {
-    icon.setTemplateImage(true);
-  }
+  const raw = nativeImage.createFromPath(getIconPath('tray@2x.png'));
+  const icon = raw.resize({ width: 16, height: 16 });
+  icon.setTemplateImage(true);
 
+  if (tray) {
+    tray.destroy();
+  }
   tray = new Tray(icon);
+
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Start',
+      label: isVpnOn ? 'Stop' : 'Start',
       accelerator: 'CmdOrCtrl+S',
-      click: () => {},
+      click: () => {
+        if (!goProcess || !goProcess.stdin.writable) {
+          return;
+        }
+        if (isVpnOn) {
+          goProcess.stdin.write('vpn_off\n');
+          return;
+        }
+        goProcess.stdin.write('vpn_on\n');
+      },
     },
+    { type: 'separator' },
     {
       label: 'Open',
       accelerator: 'CmdOrCtrl+O',
@@ -76,6 +89,7 @@ const createTray = () => {
         mainWindow?.focus();
       },
     },
+    { type: 'separator' },
     {
       label: 'Quit',
       accelerator: 'CmdOrCtrl+Q',
@@ -94,11 +108,12 @@ const createChildProcess = () => {
       try {
         const event = JSON.parse(output);
         switch (event.type) {
-          case 'status':
-            mainWindow.webContents.send('status-event', event);
-            break;
-          case 'pong':
-            mainWindow.webContents.send('pong-event', event);
+          case 'vpn_status':
+            mainWindow.webContents.send('vpn_status', event);
+            if (isVpnOn !== event.status) {
+              createTray();
+            }
+            isVpnOn = event.status;
             break;
           default:
             break;
@@ -111,11 +126,18 @@ const createChildProcess = () => {
   }
 };
 
-ipcMain.on('ping', (_event: IpcMainEvent) => {
+ipcMain.on('vpn_on', (_event: IpcMainEvent) => {
   if (!goProcess || !goProcess.stdin.writable) {
     return;
   }
-  goProcess.stdin.write('ping\n');
+  goProcess.stdin.write('vpn_on\n');
+});
+
+ipcMain.on('vpn_off', (_event: IpcMainEvent) => {
+  if (!goProcess || !goProcess.stdin.writable) {
+    return;
+  }
+  goProcess.stdin.write('vpn_off\n');
 });
 
 app.on('ready', () => {
