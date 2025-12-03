@@ -1,20 +1,43 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
+import path from 'node:path';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import { MakerDeb } from '@electron-forge/maker-deb';
+import { MakerDMG } from '@electron-forge/maker-dmg';
 import { MakerRpm } from '@electron-forge/maker-rpm';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
-import { MakerZIP } from '@electron-forge/maker-zip';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { PublisherGithub } from '@electron-forge/publisher-github';
 
 const config: ForgeConfig = {
+  rebuildConfig: {},
   packagerConfig: {
     asar: true,
+    icon: path.resolve(__dirname, 'assets', 'icon'),
     extraResource: ['resources'],
+    appCategoryType: 'public.app-category.utilities',
   },
-  rebuildConfig: {},
-  makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
+  makers: [
+    new MakerDMG({
+      format: 'ULFO',
+      icon: 'assets/icon.icns',
+      background: 'assets/background.png',
+      contents: (opts) => [
+        { x: 142, y: 245, type: 'file', path: opts.appPath },
+        { x: 488, y: 245, type: 'link', path: '/Applications' },
+      ],
+      additionalDMGOptions: {
+        window: { size: { width: 658, height: 498 } },
+      },
+    }),
+    new MakerSquirrel({ iconUrl: 'assets/icon.ico' }),
+    new MakerRpm({
+      options: { icon: 'assets/icon.png', categories: ['Network', 'Utility'] },
+    }),
+    new MakerDeb({
+      options: { icon: 'assets/icon.png', categories: ['Network', 'Utility'] },
+    }),
+  ],
   publishers: [
     new PublisherGithub({
       repository: {

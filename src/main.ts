@@ -15,10 +15,19 @@ const getGoBinaryPath = () => {
   return path.join(app.getAppPath(), 'resources', 'go_ipc_server');
 };
 
+const getIconPath = () => {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'assets', 'icon.ico');
+  }
+  return path.join(app.getAppPath(), 'assets', 'icon.ico');
+};
+
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
+    title: 'StarMesh',
+    icon: getIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
