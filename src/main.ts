@@ -1,13 +1,16 @@
 import { ChildProcess, spawn } from 'node:child_process';
 import path from 'node:path';
-import { BrowserWindow, IpcMainEvent, app, ipcMain } from 'electron';
+import { BrowserWindow, IpcMainEvent, Menu, Tray, app, ipcMain, nativeImage } from 'electron';
 import started from 'electron-squirrel-startup';
 
 if (started) {
   app.quit();
 }
 
+let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
 let goProcess: ChildProcess | null = null;
+
 const getGoBinaryPath = () => {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, 'resources', 'go_ipc_server');
@@ -15,20 +18,25 @@ const getGoBinaryPath = () => {
   return path.join(app.getAppPath(), 'resources', 'go_ipc_server');
 };
 
-const getIconPath = () => {
+const getIconPath = (filename: string) => {
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'assets', 'icon.ico');
+    return path.join(process.resourcesPath, 'assets', filename);
   }
-  return path.join(app.getAppPath(), 'assets', 'icon.ico');
+  return path.join(app.getAppPath(), 'assets', filename);
 };
 
 const createWindow = () => {
-  const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+  mainWindow = new BrowserWindow({
     title: 'StarMesh',
-    icon: getIconPath(),
+    icon: nativeImage.createFromPath(getIconPath('icon.ico')),
+    width: 340,
+    height: 600,
+    resizable: false,
+    fullscreenable: false,
+    roundedCorners: true,
+    titleBarStyle: 'hidden',
     webPreferences: {
+      devTools: !app.isPackaged,
       preload: path.join(__dirname, 'preload.js'),
     },
   });
@@ -38,7 +46,43 @@ const createWindow = () => {
   } else {
     mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
   }
+};
 
+const createTray = () => {
+  const icon = nativeImage.createFromPath(getIconPath('tray.png'));
+  if (process.platform === 'darwin') {
+    icon.setTemplateImage(true);
+  }
+
+  tray = new Tray(icon);
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Start',
+      accelerator: 'CmdOrCtrl+S',
+      click: () => {},
+    },
+    {
+      label: 'Open',
+      accelerator: 'CmdOrCtrl+O',
+      click: () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+          createWindow();
+          return;
+        }
+        mainWindow?.focus();
+      },
+    },
+    {
+      label: 'Quit',
+      accelerator: 'CmdOrCtrl+Q',
+      click: () => app.quit(),
+    },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+};
+
+const createChildProcess = () => {
   if (!goProcess) {
     goProcess = spawn(getGoBinaryPath(), [], { shell: false });
     goProcess.stdout.on('data', (data) => {
@@ -70,14 +114,20 @@ ipcMain.on('ping', (_event: IpcMainEvent) => {
   goProcess.stdin.write('ping\n');
 });
 
-app.on('ready', createWindow);
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+app.on('ready', () => {
+  createWindow();
+  createTray();
+  createChildProcess();
 });
+
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
+  }
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
   }
 });
