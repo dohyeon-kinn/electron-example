@@ -8,15 +8,6 @@ on:
       - 'v*'
       - '*-beta'
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Release environment (release, beta)'
-        required: false
-        default: 'release'
-        type: choice
-        options:
-          - release
-          - beta
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -27,28 +18,66 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          # - macos-15-intel
-          - ubuntu-latest
-          # - windows-latest
-        arch:
-          - x64
         include:
           # - os: macos-latest
           #   arch: arm64
+          # - os: macos-15-intel
+          #   arch: x64
+          
+          # - os: windows-latest
+          #   arch: x64
+          # - os: windows-11-arm
+          #   arch: arm64
+          # - os: windows-latest
+          #   arch: ia32
+          
+          - os: ubuntu-latest
+            arch: x64
           - os: ubuntu-24.04-arm
             arch: armv7l
           - os: ubuntu-24.04-arm
             arch: arm64
-          # - os: windows-latest
-          #   arch: ia32
     runs-on: "${{ matrix.os }}"
+
     permissions:
       actions: write
       contents: read
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: Map OS/Arch to Makefile target
+        id: make_target
+        shell: bash
+        run: |
+          TARGET_NAME=$(
+            if [[ "${{ matrix.os }}" == ubuntu* ]]; then
+              if [[ "${{ matrix.arch }}" == "x64" ]]; then echo "linux-x64"
+              elif [[ "${{ matrix.arch }}" == "arm64" ]]; then echo "linux-arm64"
+              elif [[ "${{ matrix.arch }}" == "armv7l" ]]; then echo "linux-arm"
+              fi
+            elif [[ "${{ matrix.os }}" == macos* ]]; then
+              if [[ "${{ matrix.arch }}" == "arm64" ]]; then echo "macos-arm64"
+              elif [[ "${{ matrix.arch }}" == "x64" ]]; then echo "macos-x64"
+              fi
+            elif [[ "${{ matrix.os }}" == windows* ]]; then
+              if [[ "${{ matrix.arch }}" == "x64" ]]; then echo "win-x64"
+              elif [[ "${{ matrix.arch }}" == "arm64" ]]; then echo "win-arm64"
+              elif [[ "${{ matrix.arch }}" == "ia32" ]]; then echo "win-ia32"
+              fi
+            fi
+          )
+          echo "target=$TARGET_NAME" >> $GITHUB_OUTPUT
+
+      - name: Build Go IPC Server
+        working-directory: resources
+        run: make ${{ steps.make_target.outputs.target }}
       
       - name: Enable Corepack
         run: corepack enable
@@ -112,10 +141,6 @@ jobs:
           PRE_RELEASE_VALUE="false"
           
           if [[ "${{ github.ref }}" == *"beta" ]]; then
-            PRE_RELEASE_VALUE="true"
-          fi
-          
-          if [[ "${{ github.event.inputs.environment }}" == "beta" ]]; then
             PRE_RELEASE_VALUE="true"
           fi
           

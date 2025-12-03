@@ -90,3 +90,6 @@ typings/
 
 # Electron-Forge
 out/
+
+# Resources
+resources/go_ipc_server*

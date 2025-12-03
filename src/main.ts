@@ -1,4 +1,5 @@
 import { ChildProcess, spawn } from 'node:child_process';
+import { arch, platform } from 'node:os';
 import path from 'node:path';
 import { BrowserWindow, IpcMainEvent, Menu, Tray, app, ipcMain, nativeImage } from 'electron';
 import started from 'electron-squirrel-startup';
@@ -12,10 +13,13 @@ let tray: Tray | null = null;
 let goProcess: ChildProcess | null = null;
 
 const getGoBinaryPath = () => {
+  const ext = platform() === 'win32' ? '.exe' : '';
+  const binaryName = `go_ipc_server_${platform()}_${arch()}${ext}`;
+
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'resources', 'go_ipc_server');
+    return path.join(process.resourcesPath, 'resources', binaryName);
   }
-  return path.join(app.getAppPath(), 'resources', 'go_ipc_server');
+  return path.join(app.getAppPath(), 'resources', binaryName);
 };
 
 const getIconPath = (filename: string) => {
