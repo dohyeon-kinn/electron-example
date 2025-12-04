@@ -8,6 +8,7 @@ import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { PublisherGithub } from '@electron-forge/publisher-github';
+import * as fs from 'fs-extra';
 
 const config: ForgeConfig = {
   rebuildConfig: {},
@@ -16,6 +17,43 @@ const config: ForgeConfig = {
     icon: path.resolve(__dirname, 'assets', 'icon'),
     extraResource: ['resources', 'assets'],
     appCategoryType: 'public.app-category.utilities',
+  },
+  hooks: {
+    postMake: async (_config, makeResults) => {
+      const isPrerelease = process.env.PRE_RELEASE === 'true';
+
+      if (isPrerelease) {
+        const packageJson = await fs.readJson(path.resolve(__dirname, 'package.json'));
+        const version = packageJson.version;
+
+        for (const makeResult of makeResults) {
+          const newArtifacts: string[] = [];
+
+          for (const artifactPath of makeResult.artifacts) {
+            const dir = path.dirname(artifactPath);
+            const ext = path.extname(artifactPath);
+            const name = path.basename(artifactPath, ext);
+
+            const newName = name.replace(
+              new RegExp(`-${version.replace(/\./g, '\\.')}(?=-|$)`),
+              `-${version}-beta`,
+            );
+            const newPath = path.join(dir, `${newName}${ext}`);
+
+            if (artifactPath !== newPath && (await fs.pathExists(artifactPath))) {
+              await fs.move(artifactPath, newPath);
+              newArtifacts.push(newPath);
+            } else {
+              newArtifacts.push(artifactPath);
+            }
+          }
+
+          makeResult.artifacts = newArtifacts;
+        }
+      }
+
+      return makeResults;
+    },
   },
   makers: [
     new MakerDMG({
@@ -44,6 +82,9 @@ const config: ForgeConfig = {
         owner: 'dohyeon-kinn',
         name: 'electron-example',
       },
+      tagPrefix: process.env.PRE_RELEASE === 'true' ? 'beta-v' : 'v',
+      draft: process.env.PRE_RELEASE !== 'true',
+      generateReleaseNotes: process.env.PRE_RELEASE !== 'true',
       prerelease: process.env.PRE_RELEASE === 'true',
     }),
   ],
