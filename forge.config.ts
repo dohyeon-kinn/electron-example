@@ -21,6 +21,7 @@ const config: ForgeConfig = {
   hooks: {
     postMake: async (_config, makeResults) => {
       const isPrerelease = process.env.PRE_RELEASE === 'true';
+      const betaVersion = process.env.BETA_VERSION;
 
       if (isPrerelease) {
         const packageJson = await fs.readJson(path.resolve(__dirname, 'package.json'));
@@ -36,7 +37,7 @@ const config: ForgeConfig = {
 
             const newName = name.replace(
               new RegExp(`-${version.replace(/\./g, '\\.')}(?=-|$)`),
-              `-${version}-beta`,
+              `-${version}-beta.${betaVersion ?? 0}`,
             );
             const newPath = path.join(dir, `${newName}${ext}`);
 
@@ -82,7 +83,8 @@ const config: ForgeConfig = {
         owner: 'dohyeon-kinn',
         name: 'electron-example',
       },
-      tagPrefix: process.env.PRE_RELEASE === 'true' ? 'beta-v' : 'v',
+      tagPrefix:
+        process.env.PRE_RELEASE === 'true' ? `beta.${process.env.BETA_VERSION ?? 0}-v` : 'v',
       draft: process.env.PRE_RELEASE !== 'true',
       generateReleaseNotes: process.env.PRE_RELEASE !== 'true',
       prerelease: process.env.PRE_RELEASE === 'true',

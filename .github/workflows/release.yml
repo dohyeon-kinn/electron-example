@@ -6,7 +6,7 @@ on:
   push:
     branches:
       - 'v*'
-      - '*-beta'
+      - 'v*-beta.*'
   workflow_dispatch:
 
 concurrency:
@@ -135,17 +135,22 @@ jobs:
       - name: Make installer
         run: yarn make
 
-      - name: Set PRE_RELEASE environment variable
-        id: set_prerelease
+      - name: Set PRE_RELEASE and BETA_VERSION environment variables
         run: |
           PRE_RELEASE_VALUE="false"
+          BETA_VERSION_VALUE="0"
           
-          if [[ "${{ github.ref }}" == *"beta" ]]; then
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          
+          if [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-beta\.([0-9]+)$ ]]; then
             PRE_RELEASE_VALUE="true"
+            BETA_VERSION_VALUE="${BASH_REMATCH[2]}"
           fi
           
-          echo "PRE_RELEASE_VALUE=$PRE_RELEASE_VALUE" >> $GITHUB_ENV
-          echo "Pre-Release status set to: $PRE_RELEASE_VALUE"
+          echo "PRE_RELEASE=$PRE_RELEASE_VALUE" >> $GITHUB_ENV
+          echo "BETA_VERSION=$BETA_VERSION_VALUE" >> $GITHUB_ENV
+          echo "Pre-Release status: $PRE_RELEASE_VALUE"
+          echo "Beta Version: $BETA_VERSION_VALUE"
         shell: bash
 
       - name: Build (macOS)
@@ -153,7 +158,8 @@ jobs:
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-          PRE_RELEASE: ${{ env.PRE_RELEASE_VALUE }} 
+          PRE_RELEASE: ${{ env.PRE_RELEASE_VALUE }}
+          BETA_VERSION: ${{ env.BETA_VERSION }}
         run: yarn run publish --arch=${{ matrix.arch }} --dry-run
 
       - name: Build (Windows)
@@ -166,12 +172,14 @@ jobs:
           SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
           SM_HOST: ${{ secrets.SM_HOST }}
           PRE_RELEASE: ${{ env.PRE_RELEASE_VALUE }} 
+          BETA_VERSION: ${{ env.BETA_VERSION }}
         run: yarn run publish --arch=${{ matrix.arch }} --dry-run
 
       - name: Build (Linux)
         if: ${{ startsWith(matrix.os, 'ubuntu-') }}
         env:
           PRE_RELEASE: ${{ env.PRE_RELEASE_VALUE }} 
+          BETA_VERSION: ${{ env.BETA_VERSION }}
         run: yarn run publish --arch=${{ matrix.arch }} --dry-run
 
       - name: Upload build artifacts
@@ -209,7 +217,27 @@ jobs:
           pattern: build-artifacts-*
           merge-multiple: true
 
+      - name: Set PRE_RELEASE and BETA_VERSION environment variables
+        run: |
+          PRE_RELEASE_VALUE="false"
+          BETA_VERSION_VALUE="0"
+          
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          
+          if [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-beta\.([0-9]+)$ ]]; then
+            PRE_RELEASE_VALUE="true"
+            BETA_VERSION_VALUE="${BASH_REMATCH[2]}"
+          fi
+          
+          echo "PRE_RELEASE=$PRE_RELEASE_VALUE" >> $GITHUB_ENV
+          echo "BETA_VERSION=$BETA_VERSION_VALUE" >> $GITHUB_ENV
+          echo "Pre-Release status: $PRE_RELEASE_VALUE"
+          echo "Beta Version: $BETA_VERSION_VALUE"
+        shell: bash
+
       - name: Publish to GitHub
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRE_RELEASE: ${{ env.PRE_RELEASE_VALUE }}
+          BETA_VERSION: ${{ env.BETA_VERSION }}
         run: yarn run publish --from-dry-run
