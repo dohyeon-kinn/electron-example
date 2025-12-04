@@ -79,6 +79,24 @@ jobs:
         working-directory: resources
         run: make ${{ steps.make_target.outputs.target }}
       
+      - name: Set PRE_RELEASE and BETA_VERSION environment variables
+        run: |
+          PRE_RELEASE_VALUE="false"
+          BETA_VERSION_VALUE="0"
+          
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          
+          if [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-beta\.([0-9]+)$ ]]; then
+            PRE_RELEASE_VALUE="true"
+            BETA_VERSION_VALUE="${BASH_REMATCH[2]}"
+          fi
+          
+          echo "PRE_RELEASE_VALUE=$PRE_RELEASE_VALUE" >> $GITHUB_ENV
+          echo "BETA_VERSION_VALUE=$BETA_VERSION_VALUE" >> $GITHUB_ENV
+          echo "Pre-Release status: $PRE_RELEASE_VALUE"
+          echo "Beta Version: $BETA_VERSION_VALUE"
+        shell: bash
+
       - name: Enable Corepack
         run: corepack enable
 
@@ -133,25 +151,10 @@ jobs:
         run: yarn package
 
       - name: Make installer
+        env:
+          PRE_RELEASE: ${{ env.PRE_RELEASE_VALUE }} 
+          BETA_VERSION: ${{ env.BETA_VERSION_VALUE }}
         run: yarn make
-
-      - name: Set PRE_RELEASE and BETA_VERSION environment variables
-        run: |
-          PRE_RELEASE_VALUE="false"
-          BETA_VERSION_VALUE="0"
-          
-          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
-          
-          if [[ "$BRANCH_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-beta\.([0-9]+)$ ]]; then
-            PRE_RELEASE_VALUE="true"
-            BETA_VERSION_VALUE="${BASH_REMATCH[2]}"
-          fi
-          
-          echo "PRE_RELEASE=$PRE_RELEASE_VALUE" >> $GITHUB_ENV
-          echo "BETA_VERSION=$BETA_VERSION_VALUE" >> $GITHUB_ENV
-          echo "Pre-Release status: $PRE_RELEASE_VALUE"
-          echo "Beta Version: $BETA_VERSION_VALUE"
-        shell: bash
 
       - name: Build (macOS)
         if: ${{ startsWith(matrix.os, 'macos-') }}
@@ -159,7 +162,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           PRE_RELEASE: ${{ env.PRE_RELEASE_VALUE }}
-          BETA_VERSION: ${{ env.BETA_VERSION }}
+          BETA_VERSION: ${{ env.BETA_VERSION_VALUE }}
         run: yarn run publish --arch=${{ matrix.arch }} --dry-run
 
       - name: Build (Windows)
@@ -172,14 +175,14 @@ jobs:
           SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
           SM_HOST: ${{ secrets.SM_HOST }}
           PRE_RELEASE: ${{ env.PRE_RELEASE_VALUE }} 
-          BETA_VERSION: ${{ env.BETA_VERSION }}
+          BETA_VERSION: ${{ env.BETA_VERSION_VALUE }}
         run: yarn run publish --arch=${{ matrix.arch }} --dry-run
 
       - name: Build (Linux)
         if: ${{ startsWith(matrix.os, 'ubuntu-') }}
         env:
           PRE_RELEASE: ${{ env.PRE_RELEASE_VALUE }} 
-          BETA_VERSION: ${{ env.BETA_VERSION }}
+          BETA_VERSION: ${{ env.BETA_VERSION_VALUE }}
         run: yarn run publish --arch=${{ matrix.arch }} --dry-run
 
       - name: Upload build artifacts
@@ -229,8 +232,8 @@ jobs:
             BETA_VERSION_VALUE="${BASH_REMATCH[2]}"
           fi
           
-          echo "PRE_RELEASE=$PRE_RELEASE_VALUE" >> $GITHUB_ENV
-          echo "BETA_VERSION=$BETA_VERSION_VALUE" >> $GITHUB_ENV
+          echo "PRE_RELEASE_VALUE=$PRE_RELEASE_VALUE" >> $GITHUB_ENV
+          echo "BETA_VERSION_VALUE=$BETA_VERSION_VALUE" >> $GITHUB_ENV
           echo "Pre-Release status: $PRE_RELEASE_VALUE"
           echo "Beta Version: $BETA_VERSION_VALUE"
         shell: bash
@@ -239,5 +242,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PRE_RELEASE: ${{ env.PRE_RELEASE_VALUE }}
-          BETA_VERSION: ${{ env.BETA_VERSION }}
+          BETA_VERSION: ${{ env.BETA_VERSION_VALUE }}
         run: yarn run publish --from-dry-run
