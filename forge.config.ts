@@ -36,8 +36,11 @@ const config: ForgeConfig = {
             const name = path.basename(artifactPath, ext);
 
             const newName = name.replace(
-              new RegExp(`-${version.replace(/\./g, '\\.')}(?=-|$)`),
-              `-${version}-beta.${betaVersion ?? 0}`,
+              new RegExp(`[-_]${version.replace(/\./g, '\\.')}(?=[-_]|$)`, 'i'),
+              (match) => {
+                const separator = match[0] || '-';
+                return `${separator}${version}${separator}beta.${betaVersion ?? 0}`;
+              },
             );
             const newPath = path.join(dir, `${newName}${ext}`);
 
@@ -85,8 +88,8 @@ const config: ForgeConfig = {
       },
       tagPrefix:
         process.env.PRE_RELEASE === 'true' ? `beta.${process.env.BETA_VERSION ?? 0}-v` : 'v',
-      draft: process.env.PRE_RELEASE !== 'true',
-      generateReleaseNotes: process.env.PRE_RELEASE !== 'true',
+      draft: false,
+      generateReleaseNotes: true,
       prerelease: process.env.PRE_RELEASE === 'true',
     }),
   ],
