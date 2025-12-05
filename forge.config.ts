@@ -97,12 +97,12 @@ const config: ForgeConfig = {
     new VitePlugin({
       build: [
         {
-          entry: 'src/main.ts',
+          entry: 'main/index.ts',
           config: 'vite.main.config.ts',
           target: 'main',
         },
         {
-          entry: 'src/preload.ts',
+          entry: 'main/preload.ts',
           config: 'vite.preload.config.ts',
           target: 'preload',
         },

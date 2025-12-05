@@ -5,6 +5,7 @@ export function Index() {
 
   useEffect(() => {
     const unsubscribe = window.goApi.vpnStatusEventListener((event) => {
+      console.log(event);
       setVpnStatus(event.status);
     });
     return () => unsubscribe();

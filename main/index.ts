@@ -4,14 +4,16 @@ import path from 'node:path';
 import { BrowserWindow, IpcMainEvent, Menu, Tray, app, ipcMain, nativeImage } from 'electron';
 import started from 'electron-squirrel-startup';
 
-if (started) {
-  app.quit();
-}
-
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let goProcess: ChildProcess | null = null;
 let isVpnOn: boolean = false;
+
+if (started) {
+  app.quit();
+  goProcess?.kill();
+  goProcess = null;
+}
 
 const getGoBinaryPath = () => {
   const ext = platform() === 'win32' ? '.exe' : '';
@@ -111,7 +113,9 @@ const createChildProcess = () => {
           case 'vpn_status':
             mainWindow.webContents.send('vpn_status', event);
             if (isVpnOn !== event.status) {
+              isVpnOn = event.status;
               createTray();
+              return;
             }
             isVpnOn = event.status;
             break;
@@ -155,5 +159,7 @@ app.on('activate', () => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
+    goProcess?.kill();
+    goProcess = null;
   }
 });

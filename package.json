@@ -3,7 +3,7 @@
   "productName": "StarMesh",
   "version": "0.0.1",
   "description": "StarMesh",
-  "main": ".vite/build/main.js",
+  "main": ".vite/build/index.js",
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
