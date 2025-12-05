@@ -1,5 +1,11 @@
 ## Build
 
+### 0. Prerequisites
+Install Go (required for building the Go IPC server):
+```bash
+brew install go
+```
+
 ### 1. Go IPC Server Build
 Build the Go IPC server binary:
 ```bash
