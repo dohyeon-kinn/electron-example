@@ -148,13 +148,13 @@ jobs:
           smctl windows certsync --keypair-alias=%KEYPAIR_ALIAS%
 
       - name: Package application
-        run: yarn package
+        run: yarn package --arch=${{ matrix.arch }}
 
       - name: Make installer
         env:
           PRE_RELEASE: ${{ env.PRE_RELEASE_VALUE }} 
           BETA_VERSION: ${{ env.BETA_VERSION_VALUE }}
-        run: yarn make
+        run: yarn make --arch=${{ matrix.arch }}
 
       - name: Build (macOS)
         if: ${{ startsWith(matrix.os, 'macos-') }}
@@ -218,7 +218,7 @@ jobs:
         with:
           path: out
           pattern: build-artifacts-*
-          merge-multiple: false
+          merge-multiple: true
 
       - name: Set PRE_RELEASE and BETA_VERSION environment variables
         run: |
