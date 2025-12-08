@@ -218,7 +218,7 @@ jobs:
         with:
           path: out
           pattern: build-artifacts-*
-          merge-multiple: true
+          merge-multiple: false
 
       - name: Set PRE_RELEASE and BETA_VERSION environment variables
         run: |
