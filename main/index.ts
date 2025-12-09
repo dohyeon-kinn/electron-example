@@ -1,35 +1,43 @@
-import { ChildProcess, spawn } from 'node:child_process';
-import { arch, platform } from 'node:os';
+import { platform } from 'node:os';
 import path from 'node:path';
 import { BrowserWindow, IpcMainEvent, Menu, Tray, app, ipcMain, nativeImage } from 'electron';
 import started from 'electron-squirrel-startup';
 
+import { getBinaryPath, getIconPath } from './path';
+import { ChildProcessManager } from './process';
+
+let isVpnOn = false;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
-let goProcess: ChildProcess | null = null;
-let isVpnOn: boolean = false;
+const TRAY_ICON_IMAGES = {
+  default: nativeImage.createFromPath(getIconPath('tray@2x.png')),
+};
+
+const childProcess = new ChildProcessManager({
+  binaryPath: getBinaryPath(),
+  onNotification: (response) => {
+    switch (response.method) {
+      case 'vpn_status': {
+        const nextStatus = response.params.status;
+        if (isVpnOn !== nextStatus) {
+          isVpnOn = nextStatus;
+          createTray();
+        } else {
+          isVpnOn = nextStatus;
+        }
+        mainWindow?.webContents.send('vpn_status', response.params);
+        break;
+      }
+      default:
+        break;
+    }
+  },
+});
 
 if (started) {
   app.quit();
-  goProcess?.kill();
-  goProcess = null;
+  childProcess.stop();
 }
-
-const getGoBinaryPath = () => {
-  const ext = platform() === 'win32' ? '.exe' : '';
-  const binaryName = `go_ipc_server_${platform()}_${arch()}${ext}`;
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'resources', binaryName);
-  }
-  return path.join(app.getAppPath(), 'resources', binaryName);
-};
-
-const getIconPath = (filename: string) => {
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'assets', filename);
-  }
-  return path.join(app.getAppPath(), 'assets', filename);
-};
 
 const createWindow = () => {
   mainWindow = new BrowserWindow({
@@ -40,6 +48,7 @@ const createWindow = () => {
     resizable: false,
     maximizable: false,
     fullscreenable: false,
+    roundedCorners: true,
     titleBarStyle: 'hidden',
     webPreferences: {
       devTools: !app.isPackaged,
@@ -55,9 +64,10 @@ const createWindow = () => {
 };
 
 const createTray = () => {
-  const raw = nativeImage.createFromPath(getIconPath('tray@2x.png'));
-  const icon = raw.resize({ width: 16, height: 16 });
-  icon.setTemplateImage(true);
+  const icon = TRAY_ICON_IMAGES.default.resize({ width: 16, height: 16 });
+  if (platform() === 'darwin') {
+    icon.setTemplateImage(true);
+  }
 
   if (tray) {
     tray.destroy();
@@ -69,14 +79,7 @@ const createTray = () => {
       label: isVpnOn ? 'Stop' : 'Start',
       accelerator: 'CmdOrCtrl+S',
       click: () => {
-        if (!goProcess || !goProcess.stdin.writable) {
-          return;
-        }
-        if (isVpnOn) {
-          goProcess.stdin.write('vpn_off\n');
-          return;
-        }
-        goProcess.stdin.write('vpn_on\n');
+        childProcess.request({ method: isVpnOn ? 'vpn_off' : 'vpn_on' });
       },
     },
     { type: 'separator' },
@@ -102,52 +105,23 @@ const createTray = () => {
   tray.setContextMenu(contextMenu);
 };
 
-const createChildProcess = () => {
-  if (!goProcess) {
-    goProcess = spawn(getGoBinaryPath(), [], { shell: false });
-    goProcess.stdout.on('data', (data) => {
-      const output = data.toString().trim();
-      try {
-        const event = JSON.parse(output);
-        switch (event.type) {
-          case 'vpn_status':
-            mainWindow.webContents.send('vpn_status', event);
-            if (isVpnOn !== event.status) {
-              isVpnOn = event.status;
-              createTray();
-              return;
-            }
-            isVpnOn = event.status;
-            break;
-          default:
-            break;
-        }
-      } catch {}
-    });
-    goProcess.on('close', () => {
-      goProcess = null;
-    });
-  }
+const setupAutoLaunch = async (): Promise<void> => {
+  app.setLoginItemSettings({ openAtLogin: true });
 };
 
-ipcMain.on('vpn_on', (_event: IpcMainEvent) => {
-  if (!goProcess || !goProcess.stdin.writable) {
-    return;
-  }
-  goProcess.stdin.write('vpn_on\n');
+ipcMain.handle('vpn_on', async (_event: IpcMainEvent) => {
+  return childProcess.request({ method: 'vpn_on' });
 });
 
-ipcMain.on('vpn_off', (_event: IpcMainEvent) => {
-  if (!goProcess || !goProcess.stdin.writable) {
-    return;
-  }
-  goProcess.stdin.write('vpn_off\n');
+ipcMain.handle('vpn_off', async (_event: IpcMainEvent) => {
+  return childProcess.request({ method: 'vpn_off' });
 });
 
 app.on('ready', () => {
   createWindow();
   createTray();
-  createChildProcess();
+  childProcess.start();
+  setupAutoLaunch();
 });
 
 app.on('activate', () => {
@@ -159,7 +133,6 @@ app.on('activate', () => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
-    goProcess?.kill();
-    goProcess = null;
+    childProcess.stop();
   }
 });

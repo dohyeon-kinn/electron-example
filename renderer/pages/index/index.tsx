@@ -4,19 +4,21 @@ export function Index() {
   const [vpnStatus, setVpnStatus] = useState<boolean>(false);
 
   useEffect(() => {
-    const unsubscribe = window.goApi.vpnStatusEventListener((event) => {
-      console.log(event);
-      setVpnStatus(event.status);
+    const unsubscribe = window.goApi.vpnStatusNotificationListener((notification) => {
+      console.log(notification);
+      setVpnStatus(notification.status);
     });
     return () => unsubscribe();
   }, []);
 
-  const handleToggle = () => {
+  const handleToggle = async () => {
     if (vpnStatus) {
-      window.goApi.vpnOff();
+      const response = await window.goApi.vpnOff();
+      console.log(response);
       return;
     }
-    window.goApi.vpnOn();
+    const response = await window.goApi.vpnOn();
+    console.log(response);
   };
 
   return (

@@ -9,12 +9,39 @@ import (
 	"time"
 )
 
-// Event 구조체: Node.js로 보낼 데이터 포맷
-type Event struct {
-	Type      string `json:"type"`      // "status"
-	Command   string `json:"command"`   // vpn_on, vpn_off, vpn_status
-	Status    bool   `json:"status"`    // true / false (boolean)
-	Timestamp int64  `json:"timestamp"` // timestamp in milliseconds
+// JSON-RPC 2.0 request / response / notification 포맷 정의
+
+type rpcRequest struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id,omitempty"`    // 생략되면 notification
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params,omitempty"`
+}
+
+type rpcError struct {
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
+}
+
+// JSON-RPC 2.0 response: result / error 중 하나만 사용, method 필드 없음
+type rpcResponse struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id"`              // response 는 항상 id 필수 (null 포함)
+	Result  interface{}     `json:"result,omitempty"`
+	Error   *rpcError       `json:"error,omitempty"`
+}
+
+// JSON-RPC notification: id 없는 request 형태
+type rpcNotification struct {
+	JSONRPC string      `json:"jsonrpc"`
+	Method  string      `json:"method"`
+	Params  interface{} `json:"params,omitempty"`
+}
+
+type vpnStatusPayload struct {
+	Status    bool   `json:"status"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 // VPN 상태를 관리하는 전역 변수 (시뮬레이션용)
@@ -22,6 +49,8 @@ var (
 	vpnEnabled bool
 	vpnMu      sync.RWMutex
 )
+
+const jsonRPCVersion = "2.0"
 
 func setVPN(enabled bool) {
 	vpnMu.Lock()
@@ -35,37 +64,59 @@ func getVPN() bool {
 	return vpnEnabled
 }
 
-// 공통으로 status Event 만드는 헬퍼
-func makeVPNStatusEvent(command string) *Event {
-	return &Event{
-		Type:      "vpn_status",
-		Command:   command,
-		Status:    getVPN(), // boolean 값으로 저장
+func makeVPNStatus() vpnStatusPayload {
+	return vpnStatusPayload{
+		Status:    getVPN(),
 		Timestamp: time.Now().UnixMilli(),
 	}
 }
 
-// 1. 상태 스트리밍 고루틴
-// 3초마다 현재 VPN 상태를 보내줌
+// 3초마다 상태 Notification 전송
 func startStatusStream() {
-	for {
-		event := makeVPNStatusEvent("vpn_status")
-		sendEvent(event)
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
 
-		time.Sleep(3 * time.Second)
+	for range ticker.C {
+		sendNotification("vpn_status", makeVPNStatus())
 	}
 }
 
-// 2. 명령 리스너 (Node.js stdin 명령 처리)
+// stdin JSON-RPC Request/Notification 처리
 func startCommandListener() {
 	scanner := bufio.NewScanner(os.Stdin)
+	// 최대 1MB 까지 허용
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	for scanner.Scan() {
-		command := scanner.Text() // Node.js가 보낸 명령어 한 줄 읽기
+		line := scanner.Bytes()
 
-		if response := handleCommand(command); response != nil {
-			sendEvent(response)
+		var req rpcRequest
+		if err := json.Unmarshal(line, &req); err != nil {
+			// Parse error: 요청 id를 알 수 없으므로 id = null
+			sendResponse(json.RawMessage("null"), nil, &rpcError{
+				Code:    -32700,
+				Message: "parse error",
+				Data:    err.Error(),
+			})
+			continue
 		}
+
+		// 기본 유효성 검사
+		if req.JSONRPC != jsonRPCVersion || req.Method == "" {
+			// Invalid Request: id는 알 수 있으면 그대로, 없으면 null
+			id := req.ID
+			if len(id) == 0 {
+				id = json.RawMessage("null")
+			}
+			sendResponse(id, nil, &rpcError{
+				Code:    -32600,
+				Message: "invalid request",
+				Data:    "jsonrpc must be 2.0 and method is required",
+			})
+			continue
+		}
+
+		handleRequest(req)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -73,29 +124,59 @@ func startCommandListener() {
 	}
 }
 
-// 3. 명령어 처리 및 응답 생성
-func handleCommand(command string) *Event {
-	switch command {
+// 메소드별 분기
+func handleRequest(req rpcRequest) {
+	switch req.Method {
 	case "vpn_on":
 		setVPN(true)
-		return makeVPNStatusEvent("vpn_on")
+		payload := makeVPNStatus()
+		sendResponse(req.ID, payload, nil)
+		sendNotification("vpn_status", payload)
 
 	case "vpn_off":
 		setVPN(false)
-		return makeVPNStatusEvent("vpn_off")
-
-	case "vpn_status":
-		return makeVPNStatusEvent("vpn_status")
+		payload := makeVPNStatus()
+		sendResponse(req.ID, payload, nil)
+		sendNotification("vpn_status", payload)
 
 	default:
-		// default는 아무 이벤트도 보내지 않음
-		return nil
+		sendResponse(req.ID, nil, &rpcError{
+			Code:    -32601,
+			Message: "method not found",
+			Data:    req.Method,
+		})
 	}
 }
 
-// 4. 이벤트 전송 함수 (JSON 출력)
-func sendEvent(event *Event) {
-	jsonBytes, err := json.Marshal(event)
+// JSON-RPC Response 전송
+func sendResponse(id json.RawMessage, result interface{}, rpcErr *rpcError) {
+	// id 가 비어 있으면 notification 이므로 응답을 보내지 않음
+	if len(id) == 0 {
+		return
+	}
+
+	resp := rpcResponse{
+		JSONRPC: jsonRPCVersion,
+		ID:      id,
+		Result:  result,
+		Error:   rpcErr,
+	}
+	writeLine(resp)
+}
+
+// JSON-RPC Notification 전송 (서버 -> 클라이언트)
+func sendNotification(method string, payload interface{}) {
+	notification := rpcNotification{
+		JSONRPC: jsonRPCVersion,
+		Method:  method,
+		Params:  payload,
+	}
+	writeLine(notification)
+}
+
+// stdout 한 줄에 JSON 출력
+func writeLine(v interface{}) {
+	jsonBytes, err := json.Marshal(v)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "JSON 인코딩 오류: %v\n", err)
 		return
@@ -104,12 +185,7 @@ func sendEvent(event *Event) {
 }
 
 func main() {
-	// 초기 상태: VPN 꺼짐(false)
-	setVPN(false)
-
-	// 1. 상태 스트리밍 시작
+	setVPN(true)
 	go startStatusStream()
-
-	// 2. 명령 리스너 시작
 	startCommandListener()
 }

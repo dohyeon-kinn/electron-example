@@ -1,14 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+import { RpcResponse, VPNStatus } from './rpc';
+
 contextBridge.exposeInMainWorld('goApi', {
-  vpnOn: () => {
-    ipcRenderer.send('vpn_on');
+  vpnOn: (): Promise<RpcResponse<VPNStatus>> => {
+    return ipcRenderer.invoke('vpn_on');
   },
-  vpnOff: () => {
-    ipcRenderer.send('vpn_off');
+  vpnOff: (): Promise<RpcResponse<VPNStatus>> => {
+    return ipcRenderer.invoke('vpn_off');
   },
-  vpnStatusEventListener: (callback: (event: object) => void) => {
-    const handler = (_event: object, goEvent: object) => callback(goEvent);
+  vpnStatusNotificationListener: (callback: (notification: VPNStatus) => void) => {
+    const handler = (_event: object, notification: VPNStatus) => callback(notification);
     ipcRenderer.on('vpn_status', handler);
     return () => ipcRenderer.removeListener('vpn_status', handler);
   },
