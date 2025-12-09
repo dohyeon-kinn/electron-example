@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 import { RpcResponse, VPNStatus } from './rpc';
 
-contextBridge.exposeInMainWorld('goApi', {
+contextBridge.exposeInMainWorld('api', {
   vpnOn: (): Promise<RpcResponse<VPNStatus>> => {
     return ipcRenderer.invoke('vpn_on');
   },
