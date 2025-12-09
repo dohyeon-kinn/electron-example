@@ -7,7 +7,8 @@ export default defineConfig({
   plugins: [react(), tsconfigPaths()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'renderer'),
+      '@/main/*': path.resolve(__dirname, 'main/*'),
+      '@/renderer/*': path.resolve(__dirname, 'renderer/*'),
     },
   },
 });
